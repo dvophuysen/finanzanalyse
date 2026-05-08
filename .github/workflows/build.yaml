@@ -1,0 +1,48 @@
+name: Build & Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "finanzanalyse/**"
+      - ".github/workflows/build.yaml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [aarch64, amd64, armv7]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get add-on version
+        id: version
+        run: |
+          v=$(grep -E '^version:' finanzanalyse/config.yaml | head -1 | cut -d'"' -f2)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Version: $v"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push add-on image
+        uses: home-assistant/builder@2024.08.2
+        with:
+          args: |
+            --${{ matrix.arch }}
+            --target finanzanalyse
+            --image ghcr.io/${{ github.repository_owner }}/finanzanalyse-{arch}
+            --docker-hub ghcr.io/${{ github.repository_owner }}
+            --addon

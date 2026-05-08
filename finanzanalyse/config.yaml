@@ -1,6 +1,7 @@
 name: Finanzanalyse
-version: "0.1.1"
+version: "0.1.2"
 slug: finanzanalyse
+image: ghcr.io/dvophuysen/finanzanalyse-{arch}
 description: KI-gestütztes Haushaltsbuch mit Auto-Kategorisierung, Forecast und Coach
 url: https://github.com/dvophuysen/finanzanalyse
 arch:
