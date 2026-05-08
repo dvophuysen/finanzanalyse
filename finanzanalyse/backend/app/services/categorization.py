@@ -36,9 +36,17 @@ def _resolve_category(cat_name: str, by_name: dict[str, models.Category]) -> mod
 
 LLM_SYSTEM = (
     "Du bist ein Finanz-Assistent für deutsche Privat-Haushalte. "
-    "Aufgabe: ordne eine Bank-Transaktion einer Haushaltsbuch-Kategorie zu. "
+    "Aufgabe: ordne eine Bank-Transaktion einer Haushaltsbuch-Kategorie zu.\n"
+    "Regeln:\n"
+    "- Nutze deutsches & europäisches Wissen über Händler, Marken, Firmen "
+    "(z.B. REWE/Lidl/Aldi=Lebensmittel, Ernsting's Family/Takko=Kleidung, "
+    "Apotheke=Gesundheit, ARD/ZDF/Rundfunk=Medien & Abos, "
+    "PayPal/Klarna=Online-Shopping wenn keine andere Info).\n"
+    "- 'Sonstiges' NUR wenn wirklich keine Kategorie passt. "
+    "Auch eine Vermutung mit confidence 0.5 ist besser als 'Sonstiges'.\n"
+    "- Bei Personennamen ohne weitere Info: 'Sonstiges' mit niedriger confidence ist ok.\n"
     "Antworte ausschließlich mit JSON: "
-    '{"category": "<Name aus Liste>", "confidence": 0.0-1.0, "reason": "kurz"}.'
+    '{"category": "<Name exakt aus Liste>", "confidence": 0.0-1.0, "reason": "kurz"}.'
 )
 
 
@@ -125,6 +133,16 @@ def categorize(db: Session, tx: models.Transaction, use_llm: bool = True) -> Non
         confidence = float(confidence)
     except (TypeError, ValueError):
         confidence = 0.6
+
+    # Bei "Sonstiges" mit niedriger Confidence: lieber uncategorisiert lassen,
+    # damit der User selbst entscheidet, statt alles in den Restmuell-Topf zu werfen.
+    is_residual = "sonstig" in cat.name.lower() or "unkategori" in cat.name.lower()
+    if is_residual and confidence < 0.7:
+        log.info(
+            "LLM unsicher (conf=%.2f, '%s') -> bleibt uncategorisiert: '%s' / '%s'",
+            confidence, cat.name, tx.counterparty, tx.purpose,
+        )
+        return
 
     log.info("LLM kategorisiert '%s' -> '%s' (conf=%.2f)", tx.counterparty or tx.purpose, cat.name, confidence)
     tx.category_id = cat.id
