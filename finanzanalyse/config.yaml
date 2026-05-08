@@ -1,5 +1,5 @@
 name: Finanzanalyse
-version: "0.1.0"
+version: "0.1.1"
 slug: finanzanalyse
 description: KI-gestütztes Haushaltsbuch mit Auto-Kategorisierung, Forecast und Coach
 url: https://github.com/dvophuysen/finanzanalyse
