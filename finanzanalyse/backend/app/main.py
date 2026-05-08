@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Requ
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -90,6 +91,20 @@ def create_category(payload: schemas.CategoryIn, db: Session = Depends(get_db)):
 
 # --- Transaktionen ---
 
+def _residual_category_ids(db: Session) -> list[int]:
+    rows = (
+        db.query(models.Category.id)
+        .filter(
+            or_(
+                models.Category.name.ilike("%sonstig%"),
+                models.Category.name.ilike("%unkategori%"),
+            )
+        )
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
 @api.get("/transactions", response_model=list[schemas.TransactionOut])
 def list_transactions(
     account_id: int | None = None,
@@ -104,7 +119,13 @@ def list_transactions(
     if category_id:
         q = q.filter(models.Transaction.category_id == category_id)
     if uncategorized:
-        q = q.filter(models.Transaction.category_id.is_(None))
+        residual = _residual_category_ids(db)
+        q = q.filter(
+            or_(
+                models.Transaction.category_id.is_(None),
+                models.Transaction.category_id.in_(residual) if residual else False,
+            )
+        )
     return q.limit(limit).all()
 
 
@@ -196,8 +217,24 @@ async def import_csv(
 @api.post("/transactions/recategorize-uncategorized")
 def recategorize_uncategorized(db: Session = Depends(get_db)):
     log = logging.getLogger("recategorize")
-    txs = db.query(models.Transaction).filter(models.Transaction.category_id.is_(None)).all()
-    log.info("Bulk-Recategorize: %d uncategorized Transaktionen", len(txs))
+    residual = _residual_category_ids(db)
+    txs = (
+        db.query(models.Transaction)
+        .filter(
+            or_(
+                models.Transaction.category_id.is_(None),
+                models.Transaction.category_id.in_(residual) if residual else False,
+            )
+        )
+        .all()
+    )
+    log.info("Bulk-Recategorize: %d Transaktionen (uncategorisiert + Sonstiges)", len(txs))
+    # Reset, damit categorize() frisch laeuft (User-Korrekturen bleiben)
+    for tx in txs:
+        if tx.category_source != "user":
+            tx.category_id = None
+            tx.category_source = None
+            tx.category_confidence = None
     success = failed = 0
     for tx in txs:
         try:

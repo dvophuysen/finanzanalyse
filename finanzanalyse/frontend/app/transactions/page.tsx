@@ -63,7 +63,7 @@ export default function TransactionsPage() {
             disabled={recatBusy}
             className="text-sm px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {recatBusy ? "Laeuft..." : "Uncategorisierte neu kategorisieren"}
+            {recatBusy ? "Laeuft..." : "Unkategorisierte neu kategorisieren"}
           </button>
           <label className="text-sm flex items-center gap-2">
             <input
@@ -71,7 +71,7 @@ export default function TransactionsPage() {
               checked={onlyUncat}
               onChange={(e) => setOnlyUncat(e.target.checked)}
             />
-            Nur unkategorisierte
+            Nur offene (uncategorisiert + Sonstiges)
           </label>
         </div>
       </div>
