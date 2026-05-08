@@ -19,7 +19,7 @@ from .seed import seed
 from .services import analytics, csv_import
 from .services.categorization import categorize, learn_from_user_correction
 
-app = FastAPI(title="Finanzanalyse API", version="0.1.9")
+app = FastAPI(title="Finanzanalyse API", version="0.2.1")
 
 app.add_middleware(
     CORSMiddleware,
