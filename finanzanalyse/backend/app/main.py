@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date
+
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 from decimal import Decimal
 from pathlib import Path
 
@@ -170,8 +176,9 @@ async def import_csv(
         )
         try:
             categorize(db, tx, use_llm=use_llm)
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger("import").warning("categorize failed: %s", e)
         db.add(tx)
         try:
             db.flush()

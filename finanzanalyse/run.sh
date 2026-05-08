@@ -9,6 +9,7 @@ export AZURE_OPENAI_API_VERSION="$(bashio::config 'azure_openai_api_version')"
 export HOUSEHOLD_ADULTS="$(bashio::config 'household_adults')"
 export HOUSEHOLD_CHILDREN="$(bashio::config 'household_children')"
 export HOUSEHOLD_NET_INCOME_RANGE="$(bashio::config 'household_net_income_range')"
+export LOG_LEVEL="$(bashio::config 'log_level')"
 
 export DATABASE_URL="sqlite:////data/finanzanalyse.db"
 export CORS_ORIGINS="*"

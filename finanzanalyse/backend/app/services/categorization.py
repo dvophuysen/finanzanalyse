@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from decimal import Decimal
 
@@ -9,6 +10,29 @@ from sqlalchemy.orm import Session
 
 from .. import models
 from ..llm import llm
+
+log = logging.getLogger(__name__)
+
+
+def _normalize(s: str) -> str:
+    """Fuer fuzzy Kategorie-Name-Vergleich: lowercase, nur alnum."""
+    return re.sub(r"[^a-z0-9]+", "", s.lower())
+
+
+def _resolve_category(cat_name: str, by_name: dict[str, models.Category]) -> models.Category | None:
+    if not cat_name:
+        return None
+    if cat_name in by_name:
+        return by_name[cat_name]
+    norm = _normalize(cat_name)
+    for name, cat in by_name.items():
+        if _normalize(name) == norm:
+            return cat
+    for name, cat in by_name.items():
+        n = _normalize(name)
+        if norm and (norm in n or n in norm):
+            return cat
+    return None
 
 LLM_SYSTEM = (
     "Du bist ein Finanz-Assistent für deutsche Privat-Haushalte. "
@@ -79,11 +103,21 @@ def categorize(db: Session, tx: models.Transaction, use_llm: bool = True) -> Non
 
     try:
         result = llm.complete_json(LLM_SYSTEM, _build_user_prompt(tx, cat_names))
-    except Exception:
+    except Exception as e:
+        log.warning("LLM call failed for tx %r: %s", tx.counterparty or tx.purpose, e)
+        return
+
+    if not result:
+        log.warning("LLM returned empty/invalid JSON for tx %r", tx.counterparty or tx.purpose)
         return
 
     cat_name = result.get("category")
-    if not cat_name or cat_name not in by_name:
+    cat = _resolve_category(cat_name, by_name)
+    if not cat:
+        log.warning(
+            "LLM-Kategorie '%s' nicht in Liste fuer tx %r (Verwendung: %r)",
+            cat_name, tx.counterparty, tx.purpose,
+        )
         return
 
     confidence = result.get("confidence", 0.6)
@@ -92,7 +126,8 @@ def categorize(db: Session, tx: models.Transaction, use_llm: bool = True) -> Non
     except (TypeError, ValueError):
         confidence = 0.6
 
-    tx.category_id = by_name[cat_name].id
+    log.info("LLM kategorisiert '%s' -> '%s' (conf=%.2f)", tx.counterparty or tx.purpose, cat.name, confidence)
+    tx.category_id = cat.id
     tx.category_source = "ai"
     tx.category_confidence = Decimal(str(round(confidence, 3)))
 

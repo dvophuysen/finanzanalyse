@@ -63,11 +63,18 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.2,
         }
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
-        resp = client.chat.completions.create(**kwargs)
+        try:
+            resp = client.chat.completions.create(**kwargs)
+        except Exception as e:
+            msg = str(e)
+            if "temperature" in msg.lower() or "response_format" in msg.lower():
+                kwargs.pop("response_format", None)
+                resp = client.chat.completions.create(**kwargs)
+            else:
+                raise
         return resp.choices[0].message.content or ""
 
     def _openai(self, system: str, user: str, json_mode: bool) -> str:
