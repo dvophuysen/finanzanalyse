@@ -43,5 +43,4 @@ jobs:
           args: |
             --${{ matrix.arch }} \
             --target finanzanalyse \
-            --image "ghcr.io/${{ github.repository_owner }}/finanzanalyse-{arch}" \
             --addon
