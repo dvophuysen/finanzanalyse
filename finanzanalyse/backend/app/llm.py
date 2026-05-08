@@ -51,6 +51,10 @@ class LLMClient:
 
     def _azure(self, system: str, user: str, json_mode: bool) -> str:
         endpoint = settings.azure_openai_endpoint.rstrip("/")
+        # Falls User den Inference-API-Pfad eingegeben hat: /models entfernen,
+        # damit der OpenAI-kompatible Pfad korrekt wird.
+        if endpoint.endswith("/models"):
+            endpoint = endpoint[: -len("/models")]
         deployment = settings.azure_openai_deployment
         api_version = settings.azure_openai_api_version
         url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
