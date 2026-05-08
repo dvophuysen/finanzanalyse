@@ -99,6 +99,7 @@ def categorize(db: Session, tx: models.Transaction, use_llm: bool = True) -> Non
         tx.category_id = rule.category_id
         tx.category_source = "rule"
         tx.category_confidence = Decimal("0.9")
+        tx.category_reason = f"Regel ({rule.match_field} ~ {rule.pattern[:60]})"
         rule.hits = (rule.hits or 0) + 1
         return
 
@@ -144,14 +145,22 @@ def categorize(db: Session, tx: models.Transaction, use_llm: bool = True) -> Non
         )
         return
 
-    log.info("LLM kategorisiert '%s' -> '%s' (conf=%.2f)", tx.counterparty or tx.purpose, cat.name, confidence)
+    reason = result.get("reason") or ""
+    log.info("LLM kategorisiert '%s' -> '%s' (conf=%.2f) reason=%s",
+             tx.counterparty or tx.purpose, cat.name, confidence, reason)
     tx.category_id = cat.id
     tx.category_source = "ai"
     tx.category_confidence = Decimal(str(round(confidence, 3)))
+    tx.category_reason = reason[:300] if reason else None
 
 
 def learn_from_user_correction(db: Session, tx: models.Transaction) -> None:
-    """Wenn User Kategorie setzt: Regel anlegen, falls Counterparty bekannt."""
+    """Wenn User Kategorie setzt: Regel anlegen / aktualisieren / loeschen.
+
+    Konflikt-Erkennung: Wenn dieselbe Counterparty schon mal einer ANDEREN
+    Kategorie zugeordnet wurde, ist sie mehrdeutig -> Regel loeschen, KI
+    entscheidet kuenftig pro Buchung neu.
+    """
     if not tx.counterparty or not tx.category_id:
         return
     pattern = re.escape(tx.counterparty.strip().lower())[:120]
@@ -163,8 +172,15 @@ def learn_from_user_correction(db: Session, tx: models.Transaction) -> None:
         .first()
     )
     if existing:
-        existing.category_id = tx.category_id
-        existing.source = "user"
+        if existing.category_id == tx.category_id:
+            existing.source = "user"
+            return
+        # Konflikt: gleiche Counterparty, andere Kategorie -> mehrdeutig
+        log.info(
+            "Konflikt fuer '%s': Regel zeigte auf cat=%d, User waehlte cat=%d -> Regel geloescht",
+            tx.counterparty, existing.category_id, tx.category_id,
+        )
+        db.delete(existing)
         return
     db.add(
         models.CategorizationRule(

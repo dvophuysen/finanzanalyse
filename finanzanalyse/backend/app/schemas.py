@@ -49,6 +49,8 @@ class TransactionOut(BaseModel):
     category_id: int | None
     category_source: str | None
     category_confidence: Decimal | None
+    category_reason: str | None = None
+    needs_review: bool = True
     is_recurring: bool
     is_transfer: bool
     notes: str | None
@@ -58,6 +60,11 @@ class TransactionUpdate(BaseModel):
     category_id: int | None = None
     notes: str | None = None
     is_transfer: bool | None = None
+    needs_review: bool | None = None
+
+
+class BulkConfirmIn(BaseModel):
+    ids: list[int]
 
 
 class ImportResult(BaseModel):

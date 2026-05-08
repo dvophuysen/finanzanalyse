@@ -45,8 +45,24 @@ def on_startup() -> None:
         if path:
             Path("/" + os.path.dirname(path)).mkdir(parents=True, exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    _migrate_add_review_columns()
     with SessionLocal() as db:
         seed(db)
+
+
+def _migrate_add_review_columns() -> None:
+    """Manuelle Migration: needs_review + category_reason ergaenzen, falls fehlend."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if "transactions" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("transactions")}
+    with engine.begin() as conn:
+        if "needs_review" not in cols:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN needs_review BOOLEAN DEFAULT 1"))
+            conn.execute(text("UPDATE transactions SET needs_review = 1"))
+        if "category_reason" not in cols:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN category_reason TEXT"))
 
 
 api = APIRouter(prefix="/api")
@@ -91,26 +107,12 @@ def create_category(payload: schemas.CategoryIn, db: Session = Depends(get_db)):
 
 # --- Transaktionen ---
 
-def _residual_category_ids(db: Session) -> list[int]:
-    rows = (
-        db.query(models.Category.id)
-        .filter(
-            or_(
-                models.Category.name.ilike("%sonstig%"),
-                models.Category.name.ilike("%unkategori%"),
-            )
-        )
-        .all()
-    )
-    return [r[0] for r in rows]
-
-
 @api.get("/transactions", response_model=list[schemas.TransactionOut])
 def list_transactions(
     account_id: int | None = None,
     category_id: int | None = None,
-    uncategorized: bool = False,
-    limit: int = 200,
+    needs_review: bool | None = None,
+    limit: int = 500,
     db: Session = Depends(get_db),
 ):
     q = db.query(models.Transaction).order_by(models.Transaction.booking_date.desc())
@@ -118,14 +120,8 @@ def list_transactions(
         q = q.filter(models.Transaction.account_id == account_id)
     if category_id:
         q = q.filter(models.Transaction.category_id == category_id)
-    if uncategorized:
-        residual = _residual_category_ids(db)
-        q = q.filter(
-            or_(
-                models.Transaction.category_id.is_(None),
-                models.Transaction.category_id.in_(residual) if residual else False,
-            )
-        )
+    if needs_review is not None:
+        q = q.filter(models.Transaction.needs_review == needs_review)
     return q.limit(limit).all()
 
 
@@ -141,14 +137,28 @@ def update_transaction(
         tx.category_id = data["category_id"]
         tx.category_source = "user"
         tx.category_confidence = Decimal("1.0")
+        tx.needs_review = False
         learn_from_user_correction(db, tx)
     if "notes" in data:
         tx.notes = data["notes"]
     if "is_transfer" in data:
         tx.is_transfer = bool(data["is_transfer"])
+    if "needs_review" in data and data["needs_review"] is not None:
+        tx.needs_review = bool(data["needs_review"])
     db.commit()
     db.refresh(tx)
     return tx
+
+
+@api.post("/transactions/bulk-confirm")
+def bulk_confirm(payload: schemas.BulkConfirmIn, db: Session = Depends(get_db)):
+    if not payload.ids:
+        return {"confirmed": 0}
+    txs = db.query(models.Transaction).filter(models.Transaction.id.in_(payload.ids)).all()
+    for tx in txs:
+        tx.needs_review = False
+    db.commit()
+    return {"confirmed": len(txs)}
 
 
 # --- Import ---
@@ -194,6 +204,7 @@ async def import_csv(
             purpose=p.purpose,
             raw_text=p.raw_text,
             external_id=p.external_id,
+            needs_review=True,
         )
         try:
             categorize(db, tx, use_llm=use_llm)
@@ -216,25 +227,20 @@ async def import_csv(
 
 @api.post("/transactions/recategorize-uncategorized")
 def recategorize_uncategorized(db: Session = Depends(get_db)):
+    """Re-Kategorisierung aller offenen Transaktionen (needs_review=True)."""
     log = logging.getLogger("recategorize")
-    residual = _residual_category_ids(db)
     txs = (
         db.query(models.Transaction)
-        .filter(
-            or_(
-                models.Transaction.category_id.is_(None),
-                models.Transaction.category_id.in_(residual) if residual else False,
-            )
-        )
+        .filter(models.Transaction.needs_review.is_(True))
         .all()
     )
-    log.info("Bulk-Recategorize: %d Transaktionen (uncategorisiert + Sonstiges)", len(txs))
-    # Reset, damit categorize() frisch laeuft (User-Korrekturen bleiben)
+    log.info("Bulk-Recategorize: %d offene Transaktionen", len(txs))
     for tx in txs:
         if tx.category_source != "user":
             tx.category_id = None
             tx.category_source = None
             tx.category_confidence = None
+            tx.category_reason = None
     success = failed = 0
     for tx in txs:
         try:
@@ -246,7 +252,7 @@ def recategorize_uncategorized(db: Session = Depends(get_db)):
         else:
             failed += 1
     db.commit()
-    log.info("Bulk-Recategorize fertig: %d erfolgreich, %d weiterhin offen", success, failed)
+    log.info("Bulk-Recategorize fertig: %d Vorschlag, %d ohne Kategorie", success, failed)
     return {"processed": len(txs), "categorized": success, "still_uncategorized": failed}
 
 

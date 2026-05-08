@@ -85,6 +85,8 @@ class Transaction(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), nullable=True)
     category_source: Mapped[str | None] = mapped_column(String(20), nullable=True)  # user|rule|ai
     category_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    category_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    needs_review: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     is_transfer: Mapped[bool] = mapped_column(Boolean, default=False)
