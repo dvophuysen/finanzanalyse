@@ -1,10 +1,12 @@
 ARG BUILD_FROM=ghcr.io/home-assistant/aarch64-base:latest
 
 # --- Stage 1: Frontend bauen (Next.js -> statische Dateien) ---
-FROM node:20-alpine AS frontend-build
+# --platform=$BUILDPLATFORM: immer auf der nativen Runner-CPU bauen,
+# nicht unter QEMU-Emulation. Output ist platform-unabhaengiges HTML/JS.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+RUN npm ci --no-audit --no-fund --prefer-offline 2>/dev/null || npm install --no-audit --no-fund
 COPY frontend/ ./
 RUN npm run build
 
