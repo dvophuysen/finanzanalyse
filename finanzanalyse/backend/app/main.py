@@ -193,6 +193,26 @@ async def import_csv(
     )
 
 
+@api.post("/transactions/recategorize-uncategorized")
+def recategorize_uncategorized(db: Session = Depends(get_db)):
+    log = logging.getLogger("recategorize")
+    txs = db.query(models.Transaction).filter(models.Transaction.category_id.is_(None)).all()
+    log.info("Bulk-Recategorize: %d uncategorized Transaktionen", len(txs))
+    success = failed = 0
+    for tx in txs:
+        try:
+            categorize(db, tx, use_llm=True)
+        except Exception as e:
+            log.warning("recategorize tx %d failed: %s", tx.id, e)
+        if tx.category_id:
+            success += 1
+        else:
+            failed += 1
+    db.commit()
+    log.info("Bulk-Recategorize fertig: %d erfolgreich, %d weiterhin offen", success, failed)
+    return {"processed": len(txs), "categorized": success, "still_uncategorized": failed}
+
+
 @api.post("/transactions/{tx_id}/recategorize", response_model=schemas.TransactionOut)
 def recategorize(tx_id: int, db: Session = Depends(get_db)):
     tx = db.get(models.Transaction, tx_id)

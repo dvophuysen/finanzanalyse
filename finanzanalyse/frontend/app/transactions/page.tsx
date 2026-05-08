@@ -19,6 +19,8 @@ type Cat = { id: number; name: string; kind: string };
 
 export default function TransactionsPage() {
   const [onlyUncat, setOnlyUncat] = useState(false);
+  const [recatBusy, setRecatBusy] = useState(false);
+  const [recatMsg, setRecatMsg] = useState<string | null>(null);
   const { data: txs, mutate } = useSWR<Tx[]>(
     `/transactions?limit=500${onlyUncat ? "&uncategorized=true" : ""}`,
     fetcher,
@@ -34,19 +36,46 @@ export default function TransactionsPage() {
     mutate();
   }
 
+  async function recategorizeAll() {
+    setRecatBusy(true);
+    setRecatMsg("Laeuft – kann ein paar Minuten dauern...");
+    try {
+      const res = await fetch(api("/transactions/recategorize-uncategorized"), { method: "POST" });
+      const data = await res.json();
+      setRecatMsg(
+        `Fertig: ${data.categorized} kategorisiert, ${data.still_uncategorized} weiterhin offen (von ${data.processed}).`,
+      );
+      mutate();
+    } catch (e) {
+      setRecatMsg(`Fehler: ${e}`);
+    } finally {
+      setRecatBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold">Transaktionen</h1>
-        <label className="text-sm flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={onlyUncat}
-            onChange={(e) => setOnlyUncat(e.target.checked)}
-          />
-          Nur unkategorisierte
-        </label>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={recategorizeAll}
+            disabled={recatBusy}
+            className="text-sm px-3 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {recatBusy ? "Laeuft..." : "Uncategorisierte neu kategorisieren"}
+          </button>
+          <label className="text-sm flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={onlyUncat}
+              onChange={(e) => setOnlyUncat(e.target.checked)}
+            />
+            Nur unkategorisierte
+          </label>
+        </div>
       </div>
+      {recatMsg && <div className="text-sm text-slate-600 dark:text-slate-400">{recatMsg}</div>}
 
       <div className="overflow-x-auto bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full text-sm">
