@@ -18,7 +18,9 @@ ENV LANG=C.UTF-8 \
     PYTHONUNBUFFERED=1 \
     STATIC_DIR=/app/static
 
-RUN apk add --no-cache python3 py3-pip build-base linux-headers \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-venv python3-pip ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
     && python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip
 
