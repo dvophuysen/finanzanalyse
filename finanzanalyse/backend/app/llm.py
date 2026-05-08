@@ -50,32 +50,30 @@ class LLMClient:
         raise ValueError(f"Unbekannter LLM-Provider: {self.provider}")
 
     def _azure(self, system: str, user: str, json_mode: bool) -> str:
-        from openai import AzureOpenAI
-
-        client = AzureOpenAI(
-            api_key=settings.azure_openai_api_key,
-            azure_endpoint=settings.azure_openai_endpoint,
-            api_version=settings.azure_openai_api_version,
-        )
-        kwargs: dict[str, Any] = {
-            "model": settings.azure_openai_deployment,
+        endpoint = settings.azure_openai_endpoint.rstrip("/")
+        deployment = settings.azure_openai_deployment
+        api_version = settings.azure_openai_api_version
+        url = f"{endpoint}/openai/deployments/{deployment}/chat/completions?api-version={api_version}"
+        payload: dict[str, Any] = {
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
         if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
-        try:
-            resp = client.chat.completions.create(**kwargs)
-        except Exception as e:
-            msg = str(e)
-            if "temperature" in msg.lower() or "response_format" in msg.lower():
-                kwargs.pop("response_format", None)
-                resp = client.chat.completions.create(**kwargs)
-            else:
-                raise
-        return resp.choices[0].message.content or ""
+            payload["response_format"] = {"type": "json_object"}
+        headers = {
+            "api-key": settings.azure_openai_api_key,
+            "Content-Type": "application/json",
+        }
+        with httpx.Client(timeout=60) as h:
+            r = h.post(url, json=payload, headers=headers)
+            if r.status_code == 400 and "response_format" in (r.text or "").lower():
+                payload.pop("response_format", None)
+                r = h.post(url, json=payload, headers=headers)
+            r.raise_for_status()
+            data = r.json()
+            return (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
 
     def _openai(self, system: str, user: str, json_mode: bool) -> str:
         from openai import OpenAI
