@@ -1,6 +1,5 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Finanzanalyse",
@@ -8,10 +7,10 @@ export const metadata: Metadata = {
 };
 
 const nav = [
-  { href: "/", label: "Dashboard" },
-  { href: "/transactions", label: "Transaktionen" },
-  { href: "/import", label: "Import" },
-  { href: "/goals", label: "Ziele" },
+  { href: ".", label: "Dashboard" },
+  { href: "transactions", label: "Transaktionen" },
+  { href: "import", label: "Import" },
+  { href: "goals", label: "Ziele" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -24,9 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="font-semibold text-lg">Finanzanalyse</span>
               <nav className="flex gap-4 text-sm">
                 {nav.map((n) => (
-                  <Link key={n.href} href={n.href} className="hover:underline">
+                  <a key={n.href} href={n.href} className="hover:underline">
                     {n.label}
-                  </Link>
+                  </a>
                 ))}
               </nav>
             </div>

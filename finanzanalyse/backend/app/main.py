@@ -5,9 +5,9 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -234,18 +234,31 @@ app.include_router(api)
 # --- Statisches Frontend ausliefern (für HA-Add-on / Single-Container) ---
 
 STATIC_DIR = Path(os.environ.get("STATIC_DIR", "/app/static"))
+
+
+def _serve_html(file: Path, request: Request) -> Response:
+    ingress = request.headers.get("X-Ingress-Path", "").rstrip("/")
+    base = (ingress + "/") if ingress else "/"
+    html = file.read_text(encoding="utf-8")
+    html = html.replace('="/_next/', '="_next/').replace("='/_next/", "='_next/")
+    html = html.replace('href="/favicon', 'href="favicon')
+    html = html.replace("<head>", f'<head><base href="{base}">', 1)
+    return Response(content=html, media_type="text/html")
+
+
 if STATIC_DIR.exists():
     app.mount("/_next", StaticFiles(directory=STATIC_DIR / "_next"), name="next-assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    def spa_fallback(full_path: str):
-        candidate = STATIC_DIR / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
-        html = STATIC_DIR / f"{full_path}.html" if full_path else STATIC_DIR / "index.html"
-        if html.is_file():
-            return FileResponse(html)
+    def spa_fallback(full_path: str, request: Request):
+        if full_path:
+            candidate = STATIC_DIR / full_path
+            if candidate.is_file() and candidate.suffix != ".html":
+                return FileResponse(candidate)
+            html = STATIC_DIR / f"{full_path}.html"
+            if html.is_file():
+                return _serve_html(html, request)
         index = STATIC_DIR / "index.html"
         if index.is_file():
-            return FileResponse(index)
+            return _serve_html(index, request)
         raise HTTPException(404)
