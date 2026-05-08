@@ -1,0 +1,26 @@
+# Optional: Lokale Entwicklung (NICHT für Endnutzer nötig).
+# Für die normale Nutzung wird die App als Home-Assistant-Add-on installiert.
+services:
+  backend:
+    build: ./finanzanalyse/backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "sqlite:////data/finanzanalyse.db"
+      SECRET_KEY: ${SECRET_KEY:-dev-secret}
+      CORS_ORIGINS: "http://localhost:3000"
+      LLM_PROVIDER: ${LLM_PROVIDER:-azure}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+    ports: ["8000:8000"]
+    volumes:
+      - ./data:/data
+
+  frontend:
+    build: ./finanzanalyse/frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: "http://localhost:8000"
+    ports: ["3000:3000"]
+    depends_on: [backend]

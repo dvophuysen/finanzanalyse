@@ -1,0 +1,35 @@
+# Env / Secrets
+.env
+.env.local
+*.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+*.log
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# Backups & data
+backups/
+data/
+uploads/
+*.sqlite
+
+# Docker
+.docker/
