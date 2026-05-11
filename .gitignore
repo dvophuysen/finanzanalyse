@@ -33,3 +33,7 @@ uploads/
 
 # Docker
 .docker/
+
+# Private user data (PII): everything in private/ except the README
+private/*
+!private/README.md
